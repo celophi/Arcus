@@ -4,9 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Arcus
+namespace Arcus.Infrastructure
 {
-    public class Class1
-    {
-    }
+	public interface IRepository
+	{
+		IUnitOfWork UnitOfWork { get; }
+	}
 }
