@@ -49,10 +49,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Infrastructure\IRepository.cs" />
-    <Compile Include="Infrastructure\IUnitOfWork.cs" />
-    <Compile Include="Infrastructure\Repository.cs" />
-    <Compile Include="Infrastructure\UnitOfWork.cs" />
+    <Compile Include="Infrastructure\Datastore\IRepository.cs" />
+    <Compile Include="Infrastructure\Datastore\IUnitOfWork.cs" />
+    <Compile Include="Infrastructure\Network\Server.cs" />
+    <Compile Include="Infrastructure\Datastore\Repository.cs" />
+    <Compile Include="Infrastructure\Datastore\UnitOfWork.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

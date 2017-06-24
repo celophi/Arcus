@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Arcus.Infrastructure
+namespace Arcus.Infrastructure.Datastore
 {
 	public class Repository<TEntity> : IRepository<TEntity> where TEntity : class, new()
 	{

@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Arcus.Infrastructure
+namespace Arcus.Infrastructure.Datastore
 {
 	public class UnitOfWork : IUnitOfWork
 	{

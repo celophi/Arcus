@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Arcus.Infrastructure
+namespace Arcus.Infrastructure.Datastore
 {
 	public interface IRepository<TEntity> where TEntity : class, new()
 	{
