@@ -30,6 +30,29 @@ namespace Arcus.Infrastructure.Network
 		/// Number of maximum pending connections queued to be accepted.
 		/// </summary>
 		public int backlog { get; set; } = 100;
+		
+		/// <summary>
+		/// Constructs a server for sending and receiving data.
+		/// </summary>
+		/// <param name="address">An IPAddress as a string used for listening.</param>
+		/// <param name="port">A port used for listening.</param>
+		public Server(string address, int port)
+		{
+			IPAddress ipAddr;
+			if (!IPAddress.TryParse(address, out ipAddr))
+				throw new ArgumentException("Error. The 'address' parameter was invalid.");
+			this._endpoint = new IPEndPoint(ipAddr, port);
+		}
+
+		/// <summary>
+		/// Constructs a server for sending and receiving data.
+		/// </summary>
+		/// <param name="address">An IPAddress used for listening.</param>
+		/// <param name="port">A port used for listening.</param>
+		public Server(IPAddress address, int port)
+		{
+			this._endpoint = new IPEndPoint(address, port);
+		}
 
 		/// <summary>
 		/// Constructs a server for sending and receiving data.
