@@ -11,6 +11,8 @@ namespace Arcus.Infrastructure.Network
 {
 	public class Server
 	{
+		private static bool _shutdown = false;
+
 		/// <summary>
 		/// Used for binding new sockets.
 		/// </summary>
@@ -77,13 +79,36 @@ namespace Arcus.Infrastructure.Network
 		}
 
 		/// <summary>
+		/// Instructs the server to shutdown sockets.
+		/// </summary>
+		/// <param name="force"></param>
+		public void Shutdown(bool force)
+		{
+			_shutdown = true;
+			this._listener.Close();
+		}
+
+		/// <summary>
 		/// Begins a loop to accept incoming connections.
 		/// </summary>
 		private async void AcceptConnections()
 		{
-			while (true)
+			Socket child = null;
+
+			while(!_shutdown)
 			{
-				var child = await this.AcceptAsync(this._listener);
+				try
+				{
+					child = await this.AcceptAsync(this._listener);
+				}
+				catch (OperationCanceledException e)
+				{
+					// If the task was cancelled due to a shutdown request, then this exception is expected.
+					if (_shutdown)
+						return;
+					throw;
+				}
+				
 				this.ReceiveConnectionData(child);
 			}
 		}
@@ -99,10 +124,7 @@ namespace Arcus.Infrastructure.Network
 				var buffer = new byte[this._recvBufferSize];
 				var close = await ReceiveAsync(child, buffer, 0, buffer.Length, SocketFlags.None);
 				if (close)
-				{
-					// Close this connection
-					break;
-				}
+					return;
 			}
 		}
 
@@ -126,6 +148,11 @@ namespace Arcus.Infrastructure.Network
 					var client = state.EndAccept(result);
 					
 					tcs.SetResult(client);
+				}
+				catch (ObjectDisposedException e)
+				{
+					// Set the task cancellation state when the listening socket is closed.
+					tcs.SetCanceled();
 				}
 				catch (Exception e)
 				{
