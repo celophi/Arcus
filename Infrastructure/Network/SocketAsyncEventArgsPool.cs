@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Arcus.Infrastructure.Network
@@ -13,12 +14,7 @@ namespace Arcus.Infrastructure.Network
 		/// The internal managed pool.
 		/// </summary>
 		private Stack<SocketAsyncEventArgs> _pool;
-
-		/// <summary>
-		/// Returns the number of objects in the pool.
-		/// </summary>
-		public int Count { get { return this._pool.Count; } }
-
+		
 		/// <summary>
 		/// Creates a pool of SocketAsyncEventArgs.
 		/// </summary>
@@ -37,7 +33,7 @@ namespace Arcus.Infrastructure.Network
 		{
 			lock (this._pool)
 			{
-				if (this.Count > 0)
+				if (this._pool.Count > 0)
 					return this._pool.Pop();
 				else
 					return null;
@@ -55,6 +51,21 @@ namespace Arcus.Infrastructure.Network
 
 			lock (this._pool)
 				this._pool.Push(instance);
+		}
+
+		/// <summary>
+		/// Disposes all of the SAEA instances.
+		/// </summary>
+		public void DisposeAll()
+		{
+			lock (this._pool)
+			{
+				while (this._pool.Count > 0)
+				{
+					var saea = this._pool.Pop();
+					saea.Dispose();
+				}
+			}
 		}
 	}
 }

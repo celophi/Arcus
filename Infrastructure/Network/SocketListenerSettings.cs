@@ -23,5 +23,21 @@ namespace Arcus.Infrastructure.Network
 		/// Determines the pool size of SocketAsyncEventArgs allocated for accept operations.
 		/// </summary>
 		public int MaxSimultaneousAcceptOps { get; private set; } = 10;
+
+		/// <summary>
+		/// The maximum number of connections total.
+		/// </summary>
+		/// <remarks>The operating system may limit this number.</remarks>
+		public int MaxConnections { get; private set; } = 1000;
+
+		/// <summary>
+		/// The buffer size used for send and receive operations.
+		/// </summary>
+		public int BufferSize { get; private set; } = (1024 * 8);
+
+		public SocketListenerSettings(IPEndPoint endpoint)
+		{
+			this.Endpoint = endpoint;
+		}
 	}
 }
