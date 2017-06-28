@@ -58,6 +58,7 @@
     <Compile Include="Infrastructure\Network\SocketAsyncEventArgsPool.cs" />
     <Compile Include="Infrastructure\Network\SocketListener.cs" />
     <Compile Include="Infrastructure\Network\SocketListenerSettings.cs" />
+    <Compile Include="Infrastructure\Network\State.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

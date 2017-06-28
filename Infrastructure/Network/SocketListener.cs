@@ -177,10 +177,13 @@ namespace Arcus.Infrastructure.Network
 			// Transfer the new socket to the sending/receiving SAEA.
 			this._currentConnections++;
 			var sendRecvArgs = this._sendRecvPool.Pop();
+
 			sendRecvArgs.AcceptSocket = acceptArgs.AcceptSocket;
 			acceptArgs.AcceptSocket = null;
 			this._acceptPool.Push(acceptArgs);
 
+			sendRecvArgs.UserToken = new State();
+			
 			this.Receive(sendRecvArgs);
 		}
 
