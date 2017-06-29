@@ -22,10 +22,13 @@ namespace Arcus.Infrastructure.Network
 		private SocketAsyncEventArgsPool _acceptPool;
 
 		/// <summary>
-		/// Pool of SocketAsyncEventArgs used for sending/receiving.
+		/// Pool of SAEA instances used for receiving.
 		/// </summary>
-		private SocketAsyncEventArgsPool _sendRecvPool;
+		private SocketAsyncEventArgsPool _recvPool;
 
+		/// <summary>
+		/// Pool of SAEA instances used for sending.
+		/// </summary>
 		private SocketAsyncEventArgsPool _sendPool;
 
 		/// <summary>
@@ -49,6 +52,16 @@ namespace Arcus.Infrastructure.Network
 		private bool _shutdown = false;
 
 		/// <summary>
+		/// Event called when the AcceptAsync operation completes.
+		/// </summary>
+		private EventHandler<SocketAsyncEventArgs> _onAcceptCompleted;
+
+		/// <summary>
+		/// Event called when the ReceiveAsync operation completes.
+		/// </summary>
+		private EventHandler<SocketAsyncEventArgs> _onReceiveCompleted;
+
+		/// <summary>
 		/// Constructs a SocketListener.
 		/// </summary>
 		/// <param name="settings">Object used to set server related properties.</param>
@@ -58,33 +71,27 @@ namespace Arcus.Infrastructure.Network
 			this._maxConnectionsControl = new Semaphore(settings.MaxConnections, settings.MaxConnections);
 
 			this._acceptPool = new SocketAsyncEventArgsPool(settings.MaxSimultaneousAcceptOps);
-			this._sendRecvPool = new SocketAsyncEventArgsPool(settings.MaxConnections);
+			this._recvPool = new SocketAsyncEventArgsPool(settings.MaxConnections);
 			this._sendPool = new SocketAsyncEventArgsPool(settings.MaxConnections * settings.SendersPerConnection);
 
 
-			// Pre-allocate resources for send/receive SAEA.
-			//for (int i = 0; i < settings.MaxConnections; i++)
-			//{
-			//	var sendRecvArgs = new SocketAsyncEventArgs();
-			//	var sendArgs = new SocketAsyncEventArgs();
+			// Initialize event handlers
+			this._onReceiveCompleted = ((sender, e) => 
+			{
+				if ((e.LastOperation == SocketAsyncOperation.Receive) && (e.SocketError != SocketError.Success))
+				{
+					// close the connection
+				}
 
-			//	// Necessary event for processing immediately after connection has completed.
-			//	sendRecvArgs.Completed += ((sender, saea) =>
-			//	{
-			//		switch (saea.LastOperation)
-			//		{
-			//			case SocketAsyncOperation.Receive:
-			//				this.ProcessReceive(saea);
-			//				break;
-			//			default:
-			//				throw new ArgumentException("Error. The last operation was not a 'send' or 'receive'.");
-			//		}
-			//	});
+				this.ProcessReceive(e);
+			});
 
-			//	sendRecvArgs.SetBuffer(new byte[settings.BufferSize], 0, settings.BufferSize);
-
-			//	this._sendRecvPool.Push(sendRecvArgs);
-			//}
+			// This unsubscribes itself
+			this._onAcceptCompleted = ((sender, e) =>
+			{
+				this.ProcessAccept(e);
+				e.Completed -= this._onAcceptCompleted;
+			});
 		}
 
 		/// <summary>
@@ -106,10 +113,7 @@ namespace Arcus.Infrastructure.Network
 		public void Accept()
 		{
 			var saea = this._acceptPool.Pop();
-			saea.Completed += ((sender, e) =>
-			{
-				this.ProcessAccept(e);
-			});
+			saea.Completed += this._onAcceptCompleted;
 
 			// If the maximum allowed connections has not been reached, accept one connection.
 			// If the operation completes synchronously, then move to processing; otherwise,
@@ -148,7 +152,7 @@ namespace Arcus.Infrastructure.Network
 			this._currentConnections++;
 
 			// Obtain a receiver SAEA
-			var receiver = this._sendRecvPool.Pop();
+			var receiver = this._recvPool.Pop();
 			receiver.AcceptSocket = acceptor.AcceptSocket;
 
 			// Recycle the acceptor
@@ -162,15 +166,7 @@ namespace Arcus.Infrastructure.Network
 			receiver.SetBuffer(buffer, 0, buffer.Length);
 
 			// Assign the event handler
-			receiver.Completed += ((sender, e) =>
-			{
-				if ((e.LastOperation == SocketAsyncOperation.Receive) && (e.SocketError != SocketError.Success))
-				{
-					// close the connection
-				}
-
-				this.ProcessReceive(e);
-			});
+			receiver.Completed += this._onReceiveCompleted;
 
 			// Start receiving
 			if (!receiver.AcceptSocket.ReceiveAsync(receiver))
@@ -236,7 +232,7 @@ namespace Arcus.Infrastructure.Network
 			}
 
 			// Recycle the SAEA
-			this._sendRecvPool.Push(sendRecvArgs);
+			this._recvPool.Push(sendRecvArgs);
 			this._maxConnectionsControl.Release();
 		}
 
@@ -260,7 +256,7 @@ namespace Arcus.Infrastructure.Network
 			}
 
 			this._acceptPool.DisposeAll();
-			this._sendRecvPool.DisposeAll();
+			this._recvPool.DisposeAll();
 		}
 	}
 }

@@ -12,19 +12,47 @@ namespace Arcus.Infrastructure.Network
 	/// </summary>
 	public class Sender
 	{
+		/// <summary>
+		/// Client socket.
+		/// </summary>
 		private Socket _socket;
+
+		/// <summary>
+		/// Pool of SAEA for sending.
+		/// </summary>
 		private SocketAsyncEventArgsPool _pool;
+
+		/// <summary>
+		/// Event called when SendAsync completes.
+		/// </summary>
+		private EventHandler<SocketAsyncEventArgs> _onSendCompleted;
 
 		/// <summary>
 		/// Unique identifier for the client.
 		/// </summary>
 		public Guid Id { get; private set; }
 
+		/// <summary>
+		/// Creates a sender implementation to communicate with a client.
+		/// </summary>
+		/// <param name="socket">Client socket to connect to.</param>
+		/// <param name="pool">Pool of SAEA instances to draw from.</param>
 		public Sender(Socket socket, SocketAsyncEventArgsPool pool)
 		{
 			this.Id = Guid.NewGuid();
 			this._socket = socket;
 			this._pool = pool;
+
+			this._onSendCompleted = ((sender, e) =>
+			{
+				if ((e.LastOperation == SocketAsyncOperation.Send) && (e.SocketError != SocketError.Success))
+				{
+					// close the connection
+				}
+
+				this._pool.Push(e);
+				e.Completed -= this._onSendCompleted;
+			});
 		}
 
 		/// <summary>
@@ -54,24 +82,13 @@ namespace Arcus.Infrastructure.Network
 		/// <param name="buffer">Byte array to send to the client.</param>
 		private void Process(byte[] buffer)
 		{
-			if (this._socket == null || !this._socket.Connected)
-				return;
-
-			if (buffer == null || buffer.Length == 0)
+			if (this._socket == null || buffer == null || buffer.Length == 0)
 				return;
 
 			var saea = this._pool.Pop();
 			saea.SetBuffer(buffer, 0, buffer.Length);
 			saea.UserToken = this;
-			saea.Completed += ((sender, e) =>
-			{
-				if ((e.LastOperation == SocketAsyncOperation.Send) && (e.SocketError != SocketError.Success))
-				{
-					// close the connection
-				}
-
-				this._pool.Push(e);
-			});
+			saea.Completed += this._onSendCompleted;
 
 			this._socket.SendAsync(saea);
 		}
