@@ -33,7 +33,8 @@ namespace Arcus.Infrastructure.Network
 		/// <summary>
 		/// Returns an available instance from the pool.
 		/// </summary>
-		/// <returns></returns>
+		/// <returns>SAEA instance</returns>
+		/// <remarks>Creates a new instance when the pool has none available.</remarks>
 		public SocketAsyncEventArgs Pop()
 		{
 			lock (this._pool)
@@ -50,14 +51,18 @@ namespace Arcus.Infrastructure.Network
 		/// Adds an instance back to the pool.
 		/// </summary>
 		/// <param name="instance">A SocketAsyncEventArgs object.</param>
+		/// <remarks>Disposes additional instances when the pool has sufficient capacity.</remarks>
 		public void Push(SocketAsyncEventArgs instance)
 		{
 			if (instance == null)
 				throw new ArgumentNullException("Error. The SocketAsyncEventArgs object must not be null.");
 
-			// Dispose the instance if it goes over the initial capacity.
 			lock (this._pool)
 			{
+				instance.UserToken = null;
+				instance.AcceptSocket = null;
+
+				// Dispose the instance if it goes over the initial capacity.
 				if (this._pool.Count < this._capacity)
 					this._pool.Push(instance);
 				else

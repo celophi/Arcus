@@ -39,11 +39,6 @@ namespace Arcus.Infrastructure.Network
 		private Socket _listener;
 
 		/// <summary>
-		/// Implementation for handling received data.
-		/// </summary>
-		private IReceiveHandler _recvHandler;
-
-		/// <summary>
 		/// Used to track the currently connected clients.
 		/// </summary>
 		private int _currentConnections = 0;
@@ -57,57 +52,39 @@ namespace Arcus.Infrastructure.Network
 		/// Constructs a SocketListener.
 		/// </summary>
 		/// <param name="settings">Object used to set server related properties.</param>
-		public SocketListener(SocketListenerSettings settings, IReceiveHandler recvHandler)
+		public SocketListener(SocketListenerSettings settings)
 		{
 			this._settings = settings;
 			this._maxConnectionsControl = new Semaphore(settings.MaxConnections, settings.MaxConnections);
+
 			this._acceptPool = new SocketAsyncEventArgsPool(settings.MaxSimultaneousAcceptOps);
 			this._sendRecvPool = new SocketAsyncEventArgsPool(settings.MaxConnections);
-			this._recvHandler = recvHandler;
+			this._sendPool = new SocketAsyncEventArgsPool(settings.MaxConnections * settings.SendersPerConnection);
 
-			// Pre-allocate resources for accept SAEA.
-			for (int i = 0; i < settings.MaxSimultaneousAcceptOps; i++)
-			{
-				this._acceptPool.Push(this.NewAcceptSAEA(this._acceptPool));
-			}
 
 			// Pre-allocate resources for send/receive SAEA.
-			for (int i = 0; i < settings.MaxConnections; i++)
-			{
-				var sendRecvArgs = new SocketAsyncEventArgs();
-				var sendArgs = new SocketAsyncEventArgs();
+			//for (int i = 0; i < settings.MaxConnections; i++)
+			//{
+			//	var sendRecvArgs = new SocketAsyncEventArgs();
+			//	var sendArgs = new SocketAsyncEventArgs();
 
-				// Necessary event for processing immediately after connection has completed.
-				sendRecvArgs.Completed += ((sender, saea) =>
-				{
-					switch (saea.LastOperation)
-					{
-						case SocketAsyncOperation.Receive:
-							this.ProcessReceive(saea);
-							break;
-						case SocketAsyncOperation.Send:
-							this.ProcessSend(saea);
-							break;
-						default:
-							throw new ArgumentException("Error. The last operation was not a 'send' or 'receive'.");
-					}
-				});
+			//	// Necessary event for processing immediately after connection has completed.
+			//	sendRecvArgs.Completed += ((sender, saea) =>
+			//	{
+			//		switch (saea.LastOperation)
+			//		{
+			//			case SocketAsyncOperation.Receive:
+			//				this.ProcessReceive(saea);
+			//				break;
+			//			default:
+			//				throw new ArgumentException("Error. The last operation was not a 'send' or 'receive'.");
+			//		}
+			//	});
 
-				// Completed event for sending.
-				sendArgs.Completed += ((sender, saea) =>
-				{
-					if ((saea.LastOperation == SocketAsyncOperation.Send) && 
-					(saea.SocketError != SocketError.Success))
-					{
-						this.CloseClientSocket(saea);
-					}
-				});
+			//	sendRecvArgs.SetBuffer(new byte[settings.BufferSize], 0, settings.BufferSize);
 
-				sendRecvArgs.SetBuffer(new byte[settings.BufferSize], 0, settings.BufferSize);
-
-				this._sendRecvPool.Push(sendRecvArgs);
-				this._sendPool.Push(sendArgs);
-			}
+			//	this._sendRecvPool.Push(sendRecvArgs);
+			//}
 		}
 
 		/// <summary>
@@ -128,10 +105,11 @@ namespace Arcus.Infrastructure.Network
 		/// </summary>
 		public void Accept()
 		{
-			// Get an available SocketAsyncEventArgs from the pool, or create one if needed.
-			var acceptArgs = this._acceptPool.Pop();
-			if (acceptArgs == null)
-				acceptArgs = this.NewAcceptSAEA(this._acceptPool);
+			var saea = this._acceptPool.Pop();
+			saea.Completed += ((sender, e) =>
+			{
+				this.ProcessAccept(e);
+			});
 
 			// If the maximum allowed connections has not been reached, accept one connection.
 			// If the operation completes synchronously, then move to processing; otherwise,
@@ -140,144 +118,91 @@ namespace Arcus.Infrastructure.Network
 
 			try
 			{
-				if (!this._listener.AcceptAsync(acceptArgs))
-					this.ProcessAccept(acceptArgs);
+				if (!this._listener.AcceptAsync(saea))
+					this.ProcessAccept(saea);
 			}
-			catch (ObjectDisposedException e)
+			catch (ObjectDisposedException)
 			{
 				if (this._shutdown)
-					acceptArgs.Dispose();
+					saea.Dispose();
 				else
 					throw;
 			}
 		}
 
 		/// <summary>
-		/// Creates a new SocketAsyncEventArgs instance for accept operations.
-		/// </summary>
-		/// <param name="pool"></param>
-		/// <returns>SAEA for accept.</returns>
-		/// <remarks>Creating this is possible since Accept operations do not use a buffer.</remarks>
-		private SocketAsyncEventArgs NewAcceptSAEA(SocketAsyncEventArgsPool pool)
-		{
-			var acceptArgs = new SocketAsyncEventArgs();
-
-			// Necessary event for processing immediately after connection has completed.
-			acceptArgs.Completed += ((sender, saea) =>
-			{
-				this.ProcessAccept(saea);
-			});
-
-			return acceptArgs;
-		}
-
-		/// <summary>
 		/// Processes a SAEA once the 'accept' operation has completed.
 		/// </summary>
-		/// <param name="acceptArgs">SAEA instance in the 'accept' completed state.</param>
-		private void ProcessAccept(SocketAsyncEventArgs acceptArgs)
+		/// <param name="acceptor">SAEA instance in the 'accept' completed state.</param>
+		private void ProcessAccept(SocketAsyncEventArgs acceptor)
 		{
-			this.Accept();
-
 			// Dispose the socket, queue the SAEA for reuse, start another accept call.
-			if (acceptArgs.SocketError != SocketError.Success)
+			if (acceptor.SocketError != SocketError.Success)
 			{
-				acceptArgs.AcceptSocket.Close();
-				acceptArgs.AcceptSocket = null;
-				this._acceptPool.Push(acceptArgs);
+				acceptor.AcceptSocket.Close();
+				this._acceptPool.Push(acceptor);
+				this.Accept();
 				return;
 			}
-
-			// Transfer the new socket to the sending/receiving SAEA.
-			this._currentConnections++;
-			var sendRecvArgs = this._sendRecvPool.Pop();
-			var sendArgs = this._sendPool.Pop();
-
-			sendRecvArgs.AcceptSocket = acceptArgs.AcceptSocket;
-			sendArgs.AcceptSocket = acceptArgs.AcceptSocket;
-			acceptArgs.AcceptSocket = null;
-			this._acceptPool.Push(acceptArgs);
-
-			sendRecvArgs.UserToken = new State();
 			
-			this.Receive(sendRecvArgs);
-		}
+			this._currentConnections++;
 
-		/// <summary>
-		/// Wraps the ReceiveAsync method to handle sync/async return values.
-		/// </summary>
-		/// <param name="sendRecvArgs">SAEA object used for receiving data.</param>
-		private void Receive(SocketAsyncEventArgs sendRecvArgs)
-		{
-			if (this._shutdown)
-				sendRecvArgs.AcceptSocket.Shutdown(SocketShutdown.Send);
+			// Obtain a receiver SAEA
+			var receiver = this._sendRecvPool.Pop();
+			receiver.AcceptSocket = acceptor.AcceptSocket;
 
-			// prepare the buffer
+			// Recycle the acceptor
+			this._acceptPool.Push(acceptor);
+
+			// Generate a sender
+			receiver.UserToken = new Sender(receiver.AcceptSocket, this._sendPool);
+
+			// Prepare a buffer
 			var buffer = new byte[this._settings.BufferSize];
-			sendRecvArgs.SetBuffer(buffer, 0, buffer.Length);
+			receiver.SetBuffer(buffer, 0, buffer.Length);
 
-			var a = ((State)sendRecvArgs.UserToken).Id;
+			// Assign the event handler
+			receiver.Completed += ((sender, e) =>
+			{
+				if ((e.LastOperation == SocketAsyncOperation.Receive) && (e.SocketError != SocketError.Success))
+				{
+					// close the connection
+				}
 
-			if (!sendRecvArgs.AcceptSocket.ReceiveAsync(sendRecvArgs))
-				this.ProcessReceive(sendRecvArgs);
+				this.ProcessReceive(e);
+			});
+
+			// Start receiving
+			if (!receiver.AcceptSocket.ReceiveAsync(receiver))
+				this.ProcessReceive(receiver);
+
+			this.Accept();
 		}
 
 		/// <summary>
 		/// Processes the received data from the socket.
 		/// </summary>
-		/// <param name="sendRecvArgs">SAEA object used for receiving data.</param>
-		private void ProcessReceive(SocketAsyncEventArgs sendRecvArgs)
+		/// <param name="receiver">SAEA object used for receiving data.</param>
+		private void ProcessReceive(SocketAsyncEventArgs receiver)
 		{
 			// Close connection when the client is done sending data.
-			if ((sendRecvArgs.SocketError != SocketError.Success) || (sendRecvArgs.BytesTransferred == 0))
+			if ((receiver.SocketError != SocketError.Success) || (receiver.BytesTransferred == 0))
 			{
-				this.CloseClientSocket(sendRecvArgs);
+				// close client
 				return;
 			}
 
-			var data = new byte[sendRecvArgs.BytesTransferred];
-			Buffer.BlockCopy(sendRecvArgs.Buffer, 0, data, 0, sendRecvArgs.BytesTransferred);
+			// Retrieve data
+			var data = new byte[receiver.BytesTransferred];
+			Buffer.BlockCopy(receiver.Buffer, 0, data, 0, receiver.BytesTransferred);
 
-			var response = this._recvHandler.Handle(data);
-			if (response.Length > this._settings.BufferSize)
-				throw new OverflowException(
-					string.Format("Error. The message size of {0} bytes is larger than the allocated buffer of size of {1}",
-					response.Length, this._settings.BufferSize));
+			// Handle
+			var sender = (Sender)receiver.UserToken;
+			sender.Handle(data);
 
-			sendRecvArgs.SetBuffer(response, 0, response.Length);
-
-			this.Send(sendRecvArgs);
-		}
-
-		/// <summary>
-		/// Wraps the asynchronous send call for SAEA.
-		/// </summary>
-		/// <param name="sendRecvArgs">SAEA instance used for sending.</param>
-		private void Send(SocketAsyncEventArgs sendRecvArgs)
-		{
-			if (this._shutdown)
-				sendRecvArgs.AcceptSocket.Shutdown(SocketShutdown.Send);
-
-			if (!sendRecvArgs.AcceptSocket.SendAsync(sendRecvArgs))
-				this.ProcessSend(sendRecvArgs);
-		}
-
-		/// <summary>
-		/// Sends data to a client using a SAEA instance.
-		/// </summary>
-		/// <param name="sendRecvArgs">SAEA instance used for sending.</param>
-		private void ProcessSend(SocketAsyncEventArgs sendRecvArgs)
-		{
-			if (sendRecvArgs.SocketError != SocketError.Success)
-			{
-				this.CloseClientSocket(sendRecvArgs);
-				return;
-			}
-
-			var buffer = new byte[this._settings.BufferSize];
-			sendRecvArgs.SetBuffer(buffer, 0, buffer.Length);
-
-			this.Receive(sendRecvArgs);
+			// Start receiving
+			if (!receiver.AcceptSocket.ReceiveAsync(receiver))
+				this.ProcessReceive(receiver);
 		}
 
 		/// <summary>

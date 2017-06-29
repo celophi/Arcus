@@ -31,9 +31,14 @@ namespace Arcus.Infrastructure.Network
 		public int MaxConnections { get; private set; } = 1000;
 
 		/// <summary>
+		/// Represents a multiple of SAEA needed per connection.
+		/// </summary>
+		public int SendersPerConnection { get; private set; } = 3;
+
+		/// <summary>
 		/// The buffer size used for send and receive operations.
 		/// </summary>
-		public int BufferSize { get; private set; } = (1024 * 8);
+		public int BufferSize { get; private set; } = (1024 * 64);
 
 		public SocketListenerSettings(IPEndPoint endpoint)
 		{

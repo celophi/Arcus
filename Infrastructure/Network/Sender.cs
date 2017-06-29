@@ -10,7 +10,7 @@ namespace Arcus.Infrastructure.Network
 	/// <summary>
 	/// Represents a client state.
 	/// </summary>
-	public class Token
+	public class Sender
 	{
 		private Socket _socket;
 		private SocketAsyncEventArgsPool _pool;
@@ -20,7 +20,7 @@ namespace Arcus.Infrastructure.Network
 		/// </summary>
 		public Guid Id { get; private set; }
 
-		public Token(Socket socket, SocketAsyncEventArgsPool pool)
+		public Sender(Socket socket, SocketAsyncEventArgsPool pool)
 		{
 			this.Id = Guid.NewGuid();
 			this._socket = socket;
@@ -28,10 +28,31 @@ namespace Arcus.Infrastructure.Network
 		}
 
 		/// <summary>
+		/// Prepares a byte array to be sent and sends.
+		/// </summary>
+		/// <param name="buffer"></param>
+		public void Send(byte[] buffer)
+		{
+			// Implementation
+			// Call this.Process()
+			this.Process(buffer);
+		}
+
+		/// <summary>
+		/// Receives data from the client for processing.
+		/// </summary>
+		/// <param name="buffer"></param>
+		public void Handle(byte[] buffer)
+		{
+			// Implementation
+			this.Send(buffer);
+		}
+
+		/// <summary>
 		/// Sends a buffer to the client asynchronously.
 		/// </summary>
 		/// <param name="buffer">Byte array to send to the client.</param>
-		public void Send(byte[] buffer)
+		private void Process(byte[] buffer)
 		{
 			if (this._socket == null || !this._socket.Connected)
 				return;
