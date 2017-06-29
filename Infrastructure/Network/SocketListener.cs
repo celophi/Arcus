@@ -26,6 +26,8 @@ namespace Arcus.Infrastructure.Network
 		/// </summary>
 		private SocketAsyncEventArgsPool _sendRecvPool;
 
+		private SocketAsyncEventArgsPool _sendPool;
+
 		/// <summary>
 		/// Prevents the socket from accepting more than the maximum set connections.
 		/// </summary>
@@ -73,6 +75,7 @@ namespace Arcus.Infrastructure.Network
 			for (int i = 0; i < settings.MaxConnections; i++)
 			{
 				var sendRecvArgs = new SocketAsyncEventArgs();
+				var sendArgs = new SocketAsyncEventArgs();
 
 				// Necessary event for processing immediately after connection has completed.
 				sendRecvArgs.Completed += ((sender, saea) =>
@@ -90,9 +93,20 @@ namespace Arcus.Infrastructure.Network
 					}
 				});
 
+				// Completed event for sending.
+				sendArgs.Completed += ((sender, saea) =>
+				{
+					if ((saea.LastOperation == SocketAsyncOperation.Send) && 
+					(saea.SocketError != SocketError.Success))
+					{
+						this.CloseClientSocket(saea);
+					}
+				});
+
 				sendRecvArgs.SetBuffer(new byte[settings.BufferSize], 0, settings.BufferSize);
 
 				this._sendRecvPool.Push(sendRecvArgs);
+				this._sendPool.Push(sendArgs);
 			}
 		}
 
@@ -177,8 +191,10 @@ namespace Arcus.Infrastructure.Network
 			// Transfer the new socket to the sending/receiving SAEA.
 			this._currentConnections++;
 			var sendRecvArgs = this._sendRecvPool.Pop();
+			var sendArgs = this._sendPool.Pop();
 
 			sendRecvArgs.AcceptSocket = acceptArgs.AcceptSocket;
+			sendArgs.AcceptSocket = acceptArgs.AcceptSocket;
 			acceptArgs.AcceptSocket = null;
 			this._acceptPool.Push(acceptArgs);
 
@@ -199,6 +215,8 @@ namespace Arcus.Infrastructure.Network
 			// prepare the buffer
 			var buffer = new byte[this._settings.BufferSize];
 			sendRecvArgs.SetBuffer(buffer, 0, buffer.Length);
+
+			var a = ((State)sendRecvArgs.UserToken).Id;
 
 			if (!sendRecvArgs.AcceptSocket.ReceiveAsync(sendRecvArgs))
 				this.ProcessReceive(sendRecvArgs);
