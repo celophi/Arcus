@@ -51,14 +51,12 @@
   <ItemGroup>
     <Compile Include="Infrastructure\Datastore\IRepository.cs" />
     <Compile Include="Infrastructure\Datastore\IUnitOfWork.cs" />
-    <Compile Include="Infrastructure\Network\IReceiveHandler.cs" />
-    <Compile Include="Infrastructure\Network\ReceiveHandler.cs" />
     <Compile Include="Infrastructure\Datastore\Repository.cs" />
     <Compile Include="Infrastructure\Datastore\UnitOfWork.cs" />
-    <Compile Include="Infrastructure\Network\SocketAsyncEventArgsPool.cs" />
-    <Compile Include="Infrastructure\Network\SocketListener.cs" />
-    <Compile Include="Infrastructure\Network\SocketListenerSettings.cs" />
-    <Compile Include="Infrastructure\Network\State.cs" />
+    <Compile Include="Infrastructure\Network\Pool.cs" />
+    <Compile Include="Infrastructure\Network\Listener.cs" />
+    <Compile Include="Infrastructure\Network\Settings.cs" />
+    <Compile Include="Infrastructure\Network\Sender.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

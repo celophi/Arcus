@@ -8,35 +8,42 @@ using System.Threading.Tasks;
 
 namespace Arcus.Infrastructure.Network
 {
-	public class SocketAsyncEventArgsPool
+	public class Pool
 	{
 		/// <summary>
 		/// The internal managed pool.
 		/// </summary>
 		private Stack<SocketAsyncEventArgs> _pool;
-		
+
+		/// <summary>
+		/// Represents the initial capacity the pool was configured with.
+		/// </summary>
+		private int _capacity;
+
 		/// <summary>
 		/// Creates a pool of SocketAsyncEventArgs.
 		/// </summary>
 		/// <param name="size">Maximum size of the pool.</param>
-		public SocketAsyncEventArgsPool(int size)
+		public Pool(int capacity)
 		{
-			this._pool = new Stack<SocketAsyncEventArgs>(size);
+			this._capacity = capacity;
+			this._pool = new Stack<SocketAsyncEventArgs>(capacity);
 		}
 
 		/// <summary>
 		/// Returns an available instance from the pool.
 		/// </summary>
-		/// <returns></returns>
-		/// <remarks>Returns null if no instances from the pool are available.</remarks>
+		/// <returns>SAEA instance</returns>
+		/// <remarks>Creates a new instance when the pool has none available.</remarks>
 		public SocketAsyncEventArgs Pop()
 		{
 			lock (this._pool)
 			{
+				// return a temporary new instance if none are available.
 				if (this._pool.Count > 0)
 					return this._pool.Pop();
 				else
-					return null;
+					return new SocketAsyncEventArgs();
 			}
 		}
 
@@ -44,13 +51,23 @@ namespace Arcus.Infrastructure.Network
 		/// Adds an instance back to the pool.
 		/// </summary>
 		/// <param name="instance">A SocketAsyncEventArgs object.</param>
+		/// <remarks>Disposes additional instances when the pool has sufficient capacity.</remarks>
 		public void Push(SocketAsyncEventArgs instance)
 		{
 			if (instance == null)
 				throw new ArgumentNullException("Error. The SocketAsyncEventArgs object must not be null.");
 
 			lock (this._pool)
-				this._pool.Push(instance);
+			{
+				instance.UserToken = null;
+				instance.AcceptSocket = null;
+
+				// Dispose the instance if it goes over the initial capacity.
+				if (this._pool.Count < this._capacity)
+					this._pool.Push(instance);
+				else
+					instance.Dispose();
+			}
 		}
 
 		/// <summary>
