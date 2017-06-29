@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Arcus.Infrastructure.Network
 {
-	public class SocketAsyncEventArgsPool
+	public class Pool
 	{
 		/// <summary>
 		/// The internal managed pool.
@@ -19,12 +19,12 @@ namespace Arcus.Infrastructure.Network
 		/// Represents the initial capacity the pool was configured with.
 		/// </summary>
 		private int _capacity;
-		
+
 		/// <summary>
 		/// Creates a pool of SocketAsyncEventArgs.
 		/// </summary>
 		/// <param name="size">Maximum size of the pool.</param>
-		public SocketAsyncEventArgsPool(int capacity)
+		public Pool(int capacity)
 		{
 			this._capacity = capacity;
 			this._pool = new Stack<SocketAsyncEventArgs>(capacity);

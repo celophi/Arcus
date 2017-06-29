@@ -20,7 +20,7 @@ namespace Arcus.Infrastructure.Network
 		/// <summary>
 		/// Pool of SAEA for sending.
 		/// </summary>
-		private SocketAsyncEventArgsPool _pool;
+		private Pool _pool;
 
 		/// <summary>
 		/// Event called when SendAsync completes.
@@ -37,7 +37,7 @@ namespace Arcus.Infrastructure.Network
 		/// </summary>
 		/// <param name="socket">Client socket to connect to.</param>
 		/// <param name="pool">Pool of SAEA instances to draw from.</param>
-		public Sender(Socket socket, SocketAsyncEventArgsPool pool)
+		public Sender(Socket socket, Pool pool)
 		{
 			this.Id = Guid.NewGuid();
 			this._socket = socket;
@@ -46,9 +46,7 @@ namespace Arcus.Infrastructure.Network
 			this._onSendCompleted = ((sender, e) =>
 			{
 				if ((e.LastOperation == SocketAsyncOperation.Send) && (e.SocketError != SocketError.Success))
-				{
-					// close the connection
-				}
+					this._socket.Shutdown(SocketShutdown.Send);
 
 				this._pool.Push(e);
 				e.Completed -= this._onSendCompleted;
@@ -61,8 +59,12 @@ namespace Arcus.Infrastructure.Network
 		/// <param name="buffer"></param>
 		public void Send(byte[] buffer)
 		{
-			// Implementation
-			// Call this.Process()
+			if (Listener.IsShuttingDown)
+			{
+				this._socket.Shutdown(SocketShutdown.Send);
+				return;
+			}
+
 			this.Process(buffer);
 		}
 

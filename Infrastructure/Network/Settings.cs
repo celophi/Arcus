@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Arcus.Infrastructure.Network
 {
-	public class SocketListenerSettings
+	public class Settings
 	{
 		/// <summary>
 		/// Used for binding new sockets.
@@ -40,7 +40,7 @@ namespace Arcus.Infrastructure.Network
 		/// </summary>
 		public int BufferSize { get; private set; } = (1024 * 64);
 
-		public SocketListenerSettings(IPEndPoint endpoint)
+		public Settings(IPEndPoint endpoint)
 		{
 			this.Endpoint = endpoint;
 		}

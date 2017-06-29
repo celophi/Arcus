@@ -9,27 +9,27 @@ using System.Threading.Tasks;
 
 namespace Arcus.Infrastructure.Network
 {
-	public class SocketListener
+	public class Listener
 	{
 		/// <summary>
 		/// Used for configuring the listening socket.
 		/// </summary>
-		private SocketListenerSettings _settings;
+		private Settings _settings;
 
 		/// <summary>
 		/// Pool of SocketAsyncEventArgs used for accepting connections.
 		/// </summary>
-		private SocketAsyncEventArgsPool _acceptPool;
+		private Pool _acceptPool;
 
 		/// <summary>
 		/// Pool of SAEA instances used for receiving.
 		/// </summary>
-		private SocketAsyncEventArgsPool _recvPool;
+		private Pool _recvPool;
 
 		/// <summary>
 		/// Pool of SAEA instances used for sending.
 		/// </summary>
-		private SocketAsyncEventArgsPool _sendPool;
+		private Pool _sendPool;
 
 		/// <summary>
 		/// Prevents the socket from accepting more than the maximum set connections.
@@ -47,11 +47,6 @@ namespace Arcus.Infrastructure.Network
 		private int _currentConnections = 0;
 
 		/// <summary>
-		/// Flag used to tell the server to shutdown all connections.
-		/// </summary>
-		private bool _shutdown = false;
-
-		/// <summary>
 		/// Event called when the AcceptAsync operation completes.
 		/// </summary>
 		private EventHandler<SocketAsyncEventArgs> _onAcceptCompleted;
@@ -62,27 +57,27 @@ namespace Arcus.Infrastructure.Network
 		private EventHandler<SocketAsyncEventArgs> _onReceiveCompleted;
 
 		/// <summary>
+		/// Flag used to tell the server to shutdown all connections.
+		/// </summary>
+		public static bool IsShuttingDown { get; private set; } = false;
+
+		/// <summary>
 		/// Constructs a SocketListener.
 		/// </summary>
 		/// <param name="settings">Object used to set server related properties.</param>
-		public SocketListener(SocketListenerSettings settings)
+		public Listener(Settings settings)
 		{
 			this._settings = settings;
 			this._maxConnectionsControl = new Semaphore(settings.MaxConnections, settings.MaxConnections);
 
-			this._acceptPool = new SocketAsyncEventArgsPool(settings.MaxSimultaneousAcceptOps);
-			this._recvPool = new SocketAsyncEventArgsPool(settings.MaxConnections);
-			this._sendPool = new SocketAsyncEventArgsPool(settings.MaxConnections * settings.SendersPerConnection);
+			this._acceptPool = new Pool(settings.MaxSimultaneousAcceptOps);
+			this._recvPool = new Pool(settings.MaxConnections);
+			this._sendPool = new Pool(settings.MaxConnections * settings.SendersPerConnection);
 
 
 			// Initialize event handlers
-			this._onReceiveCompleted = ((sender, e) => 
+			this._onReceiveCompleted = ((sender, e) =>
 			{
-				if ((e.LastOperation == SocketAsyncOperation.Receive) && (e.SocketError != SocketError.Success))
-				{
-					// close the connection
-				}
-
 				this.ProcessReceive(e);
 			});
 
@@ -104,6 +99,8 @@ namespace Arcus.Infrastructure.Network
 			this._listener.Bind(this._settings.Endpoint);
 			this._listener.Listen(this._settings.Backlog);
 
+			this._currentConnections = 0;
+			Listener.IsShuttingDown = false;
 			this.Accept();
 		}
 
@@ -127,9 +124,8 @@ namespace Arcus.Infrastructure.Network
 			}
 			catch (ObjectDisposedException)
 			{
-				if (this._shutdown)
-					saea.Dispose();
-				else
+				this._acceptPool.Push(saea);
+				if (!Listener.IsShuttingDown)
 					throw;
 			}
 		}
@@ -148,7 +144,7 @@ namespace Arcus.Infrastructure.Network
 				this.Accept();
 				return;
 			}
-			
+
 			this._currentConnections++;
 
 			// Obtain a receiver SAEA
@@ -184,7 +180,7 @@ namespace Arcus.Infrastructure.Network
 			// Close connection when the client is done sending data.
 			if ((receiver.SocketError != SocketError.Success) || (receiver.BytesTransferred == 0))
 			{
-				// close client
+				this.CloseClientSocket(receiver);
 				return;
 			}
 
@@ -204,14 +200,12 @@ namespace Arcus.Infrastructure.Network
 		/// <summary>
 		/// Shuts down the socket handling a client connection and recycles the SAEA.
 		/// </summary>
-		/// <param name="sendRecvArgs">SAEA used for the client connection.</param>
-		private void CloseClientSocket(SocketAsyncEventArgs sendRecvArgs)
+		/// <param name="receiver">SAEA used for the client connection.</param>
+		private void CloseClientSocket(SocketAsyncEventArgs receiver)
 		{
-			this._currentConnections--;
-
 			try
 			{
-				sendRecvArgs.AcceptSocket.Shutdown(SocketShutdown.Both);
+				receiver.AcceptSocket.Shutdown(SocketShutdown.Both);
 			}
 			catch (Exception e)
 			{
@@ -220,19 +214,14 @@ namespace Arcus.Infrastructure.Network
 			}
 			finally
 			{
-				sendRecvArgs.AcceptSocket.Close();
-			}
-
-			// Shutdown check
-			if (this._shutdown)
-			{
-				if (sendRecvArgs != null)
-					sendRecvArgs.Dispose();
-				return;
+				receiver.AcceptSocket.Close();
 			}
 
 			// Recycle the SAEA
-			this._recvPool.Push(sendRecvArgs);
+			receiver.Completed -= this._onReceiveCompleted;
+			this._recvPool.Push(receiver);
+
+			this._currentConnections--;
 			this._maxConnectionsControl.Release();
 		}
 
@@ -243,7 +232,7 @@ namespace Arcus.Infrastructure.Network
 		public void Shutdown(TimeSpan timeout)
 		{
 			this._listener.Close();
-			this._shutdown = true;
+			Listener.IsShuttingDown = true;
 
 			if (timeout != null)
 			{
@@ -257,6 +246,7 @@ namespace Arcus.Infrastructure.Network
 
 			this._acceptPool.DisposeAll();
 			this._recvPool.DisposeAll();
+			this._sendPool.DisposeAll();
 		}
 	}
 }
